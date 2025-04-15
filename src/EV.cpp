@@ -129,7 +129,7 @@ void EV::PIDLoop(double goal) {
     linPID.derivative = 0;
     linPID.integral = 0;
 
-    double correctKp = 285; // aims to fix drift 185, 285
+    double correctKp = 320; // aims to fix drift 185, 285
     double correctKd = 2.5; // aims to fix drift 1.75, 2.5
 
     double correctPrevError = 0;

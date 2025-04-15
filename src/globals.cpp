@@ -6,7 +6,7 @@
 const float GYRO_SCALE = 131.0;  // LSB per °/s
 
 // Calibration settings
-const int CALIBRATION_SAMPLES = 50;
+const int CALIBRATION_SAMPLES = 100;
 float gyroOffsetZ = 0;  // Calibration offset for z-axis gyro
 
 float yaw = 0;          // Integrated yaw angle (in degrees)

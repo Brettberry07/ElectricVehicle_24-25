@@ -5,7 +5,7 @@ struct PIDConstants {
   double kP, kI, kD;
   double error = 0, prevError = 0, integral = 0, derivative = 0;
   double timeOut = 25;
-  double low = -255, high = 200;
+  double low = -255, high = 150;
 
   PIDConstants(double p, double i, double d) : kP(p), kI(i), kD(d) {}
 };

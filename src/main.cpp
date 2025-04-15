@@ -46,7 +46,7 @@ void setup() {
 // double distance = 200; // make sure this is in cm (84 in)
 
 
-double distance = 700; // make sure this is in cm
+double distance = 850; // make sure this is in cm
 
 int loopCount = 1;
 void loop() {
