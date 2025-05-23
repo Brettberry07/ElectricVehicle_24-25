@@ -1,64 +1,99 @@
-#include "globals.hpp"
+#include <Arduino.h>
+#include <Encoder.h>
 
-// Create an instance of EV
-EV ev(MOTOR_A1, MOTOR_A2, MOTOR_ENA, 
-       MOTOR_B1, MOTOR_B2, MOTOR_ENB, 
-       ENCODER_A1, ENCODER_A2, ENCODER_B1, ENCODER_B2, 
-       START_BUTTON
-      );
+// === Pin Definitions ===
+const int MOTOR_IN1 = 9;    // Direction pin 1
+const int MOTOR_IN2 = 10;    // Direction pin 2
+const int MOTOR_ENA = 11;    // PWM speed pin (ENA on L298N)
+const int ENC_A = 3;
+const int ENC_B = 2;
+const int BUTTON_PIN = 4;
 
-void getSensors() {
-  ev.updateEncoder(ev.sensor.leftEncoderCount, ev.pinSA1, ev.pinSA2);
-  ev.updateEncoder(ev.sensor.rightEncoderCount, ev.pinSB1, ev.pinSB2);
+// === Motor Control (L298N) ===
+void setMotorSpeed(int pwm) {
+  pwm = constrain(pwm, -255, 255);
+  if (pwm > 0) {
+    digitalWrite(MOTOR_IN1, HIGH);
+    digitalWrite(MOTOR_IN2, LOW);
+    analogWrite(MOTOR_ENA, pwm);
+  } else if (pwm < 0) {
+    digitalWrite(MOTOR_IN1, LOW);
+    digitalWrite(MOTOR_IN2, HIGH);
+    analogWrite(MOTOR_ENA, -pwm);
+  } else {
+    digitalWrite(MOTOR_IN1, LOW);
+    digitalWrite(MOTOR_IN2, LOW);
+    analogWrite(MOTOR_ENA, 0);
+  }
+}
 
+// === Encoder Setup ===
+Encoder motorEncoder(ENC_A, ENC_B);
+
+// === Movement Parameters ===
+volatile bool startMovement = false;
+long targetDistance_cm = 200;
+float encoderTicksPerCm = 0.123; // ← Adjust based on your setup
+
+// === PID Parameters ===
+float Kp = 2.0, Ki = 0.5, Kd = 0.1;
+float pidSum = 0;
+float lastError = 0;
+unsigned long lastTime = 0;
+
+// === Button ISR ===
+void onButtonPress() {
+  startMovement = true;
 }
 
 void setup() {
   Serial.begin(9600);
-  Wire.begin();
 
-  // Wake up MPU6050 by clearing the sleep bit in the power management register (0x6B)
-  Wire.beginTransmission(MPU_ADDR);
-  Wire.write(0x6B);
-  Wire.write(0);
-  Wire.endTransmission(true);
+  pinMode(MOTOR_IN1, OUTPUT);
+  pinMode(MOTOR_IN2, OUTPUT);
+  pinMode(MOTOR_ENA, OUTPUT);
 
-  // Give sensor time to stabilize
-  delay(100);
+  // pinMode(BUTTON_PIN, INPUT_PULLUP);
+  // attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), onButtonPress, FALLING);
+  pinMode(BUTTON_PIN, INPUT);
 
-  ev.initialize();
-
-  // Calibrate the gyro (make sure the sensor is still)
-  Serial.println("Calibrating Gyro... Do not move the MPU6050!");
-  calibrateGyroZ();
-  Serial.println("Calibration complete.");
-
-  lastTime = millis();
-
-  attachInterrupt(digitalPinToInterrupt(ev.pinSA1), getSensors, CHANGE);
+  motorEncoder.write(0);
 }
 
-// testing values
-// double distance = 75; // make sure this is in cm (29 in)
-// double distance = 15; // make sure this is in cm (6 in)
-// double distance = 61; // make sure this is in cm (24 in)
-// double distance = 122; // make sure this is in cm (48 in)
-// double distance = 200; // make sure this is in cm (84 in)
-
-
-double distance = 850; // make sure this is in cm
-
-int loopCount = 1;
 void loop() {
-  if (digitalRead(ev.pinButton) == HIGH) {
-    delay(100);
-    if (loopCount == 1) { // make sure we only go once
-      ev.PIDLoop(distance);
-      loopCount++;
+  if (digitalRead(BUTTON_PIN) == LOW) {
+    startMovement = false;
+
+    long targetTicks = targetDistance_cm * encoderTicksPerCm;
+    long startTicks = motorEncoder.read();
+    double pidSum = 0;
+    double lastError = 0;
+    double lastTime = millis();
+
+    while (true) {
+      long currentTicks = motorEncoder.read() - startTicks;
+      long error = targetTicks - currentTicks;
+
+      if (abs(error) < 5) { // Stop condition
+        setMotorSpeed(0);
+        break;
+      }
+
+      // === PID Controller ===
+      unsigned long now = millis();
+      float deltaT = (now - lastTime) / 1000.0;
+      float dError = (error - lastError) / deltaT;
+      pidSum += error * deltaT;
+
+      float output = Kp * error + Ki * pidSum + Kd * dError;
+      setMotorSpeed(output);
+
+      lastError = error;
+      lastTime = now;
+      delay(10); // 100 Hz loop
     }
+
+    Serial.println("Target distance reached.");
   }
-  ev.brake();
+  Serial.println("Start button not pressed.");
 }
-
-
-
