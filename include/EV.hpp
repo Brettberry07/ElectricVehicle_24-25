@@ -1,5 +1,5 @@
 #pragma once
-#include "globals.hpp"
+#include <Arduino.h>
 
 struct PIDConstants {
   double kP, kI, kD;

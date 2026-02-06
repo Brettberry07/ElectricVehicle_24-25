@@ -1,37 +1,42 @@
 #include "globals.hpp"
 
-// MPU6050 functions and variables
+// IMU state
+Adafruit_BNO055 bno = Adafruit_BNO055(55, 0x28);
+static double headingZeroDeg = 0.0;
 
-// Sensitivity (for default ±250°/s full‐scale)
-const float GYRO_SCALE = 131.0;  // LSB per °/s
-
-// Calibration settings
-const int CALIBRATION_SAMPLES = 100;
-float gyroOffsetZ = 0;  // Calibration offset for z-axis gyro
-
-float yaw = 0;          // Integrated yaw angle (in degrees)
-
-unsigned long lastTime = 0;
-
-// Function to read only the gyroscope's z-axis data from MPU6050
-int16_t readGyroZ() {
-    Wire.beginTransmission(MPU_ADDR);
-    Wire.write(0x43 + 4); // 0x43 is the start of gyro data; skip first 4 bytes (gyro X and gyro Y)
-    Wire.endTransmission(false);
-    Wire.requestFrom(MPU_ADDR, 2, true);
-    int16_t gz = Wire.read() << 8 | Wire.read();
-    return gz;
-}
-  
-// Function to calibrate the z-axis gyro offset
-void calibrateGyroZ() {
-    long sum = 0;
-    for (int i = 0; i < CALIBRATION_SAMPLES; i++) {
-        int16_t gz = readGyroZ();
-        sum += gz;
-        delay(3);
+bool setupIMU() {
+    if (!bno.begin()) {
+        Serial.println("Failed to detect BNO055");
+        return false;
     }
-    gyroOffsetZ = sum / (float)CALIBRATION_SAMPLES;
-    Serial.print("Gyro Z offset (raw): ");
-    Serial.println(gyroOffsetZ);
+    bno.setExtCrystalUse(true);
+    return true;
+}
+
+void calibrateHeadingZero() {
+    sensors_event_t event;
+    double accumulated = 0.0;
+    const int samples = 20;
+    for (int i = 0; i < samples; i++) {
+        bno.getEvent(&event, Adafruit_BNO055::VECTOR_EULER);
+        accumulated += event.orientation.x; // Heading in degrees
+        delay(10);
+    }
+    headingZeroDeg = accumulated / samples;
+    Serial.print("Heading zero set to: ");
+    Serial.println(headingZeroDeg);
+}
+
+double readHeadingDeg() {
+    sensors_event_t event;
+    bno.getEvent(&event, Adafruit_BNO055::VECTOR_EULER);
+    double rawHeading = event.orientation.x; // 0-360 from IMU
+    double relative = normalizeAngleDeg(rawHeading - headingZeroDeg);
+    return relative;
+}
+
+double normalizeAngleDeg(double angleDeg) {
+    while (angleDeg <= -180.0) angleDeg += 360.0;
+    while (angleDeg > 180.0) angleDeg -= 360.0;
+    return angleDeg;
 }

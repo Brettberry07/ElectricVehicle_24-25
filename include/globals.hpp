@@ -2,8 +2,8 @@
 
 #include <Arduino.h>
 #include <Wire.h>
-
-#include "EV.hpp"
+#include <Adafruit_BNO055.h>
+#include <Adafruit_Sensor.h>
 
 // Defined pins
 #define MOTOR_A1 10
@@ -22,17 +22,17 @@
 
 #define START_BUTTON 12
 
-// mpu stuff
-// I2C address of MPU6050 (AD0 tied to GND)
-#define MPU_ADDR 0x68
+// IMU configuration
+extern Adafruit_BNO055 bno;
 
-extern const float GYRO_SCALE;  // LSB per °/s
-extern const int CALIBRATION_SAMPLES;
-extern float gyroOffsetZ;  // Calibration offset for z-axis gyro
-extern float yaw;          // Integrated yaw angle (in degrees)
-extern unsigned long lastTime;
+// Initialize IMU and return success flag
+bool setupIMU();
 
-// Function to read only the gyroscope's z-axis data from MPU6050
-int16_t readGyroZ();
-// Function to calibrate the z-axis gyro offset
-void calibrateGyroZ();
+// Capture the current absolute heading as the zero reference
+void calibrateHeadingZero();
+
+// Read heading relative to zero reference in degrees (-180, 180]
+double readHeadingDeg();
+
+// Utility to keep angles bounded to (-180, 180]
+double normalizeAngleDeg(double angleDeg);

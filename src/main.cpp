@@ -1,4 +1,5 @@
 #include "globals.hpp"
+#include "EV.hpp"
 
 // Create an instance of EV
 EV ev(MOTOR_A1, MOTOR_A2, MOTOR_ENA, 
@@ -17,23 +18,20 @@ void setup() {
   Serial.begin(9600);
   Wire.begin();
 
-  // Wake up MPU6050 by clearing the sleep bit in the power management register (0x6B)
-  Wire.beginTransmission(MPU_ADDR);
-  Wire.write(0x6B);
-  Wire.write(0);
-  Wire.endTransmission(true);
-
-  // Give sensor time to stabilize
-  delay(100);
-
   ev.initialize();
 
-  // Calibrate the gyro (make sure the sensor is still)
-  Serial.println("Calibrating Gyro... Do not move the MPU6050!");
-  calibrateGyroZ();
-  Serial.println("Calibration complete.");
-
-  lastTime = millis();
+  // Initialize and zero the BNO055 heading
+  Serial.println("Starting BNO055...");
+  if (!setupIMU()) {
+    while (true) {
+      Serial.println("IMU not detected. Check wiring.");
+      delay(1000);
+    }
+  }
+  delay(50);
+  Serial.println("Hold still while heading zeroes...");
+  calibrateHeadingZero();
+  Serial.println("Heading zeroed.");
 
   attachInterrupt(digitalPinToInterrupt(ev.pinSA1), getSensors, CHANGE);
 }
@@ -50,15 +48,18 @@ double distance = 850; // make sure this is in cm
 
 int loopCount = 1;
 void loop() {
-  if (digitalRead(ev.pinButton) == HIGH) {
-    delay(100);
-    if (loopCount == 1) { // make sure we only go once
-      ev.PIDLoop(distance);
-      loopCount++;
-    }
-  }
-  ev.brake();
-}
+  // if (digitalRead(ev.pinButton) == HIGH) {
+  //   delay(100);
+  //   if (loopCount == 1) { // make sure we only go once
+  //     ev.PIDLoop(distance);
+  //     loopCount++;
+  //   }
+  // }
+  // ev.brake();
 
+  double heading = readHeadingDeg();
+  Serial.print("Heading: ");
+  Serial.println(heading);
+}
 
 

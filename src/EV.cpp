@@ -1,12 +1,31 @@
 #include "EV.hpp"
+#include "globals.hpp"
 
 EV* EV::instance = nullptr; // Define static instance
 
+// all outdated and for old versions
 // distOneTick is calculated by circumference / ppr ((4.7 * pi) / 120) / 2
 // const double EV::distOneTick = 0.0615;
 // const double EV::distOneTick = 0.03075;
-const double EV::distOneTick = 0.123;
+// const double EV::distOneTick = 0.123;  // outdated
 // const double EV::distOneTick = 0.246;
+
+
+/*
+gear_ratio = 10
+12 PPR × 4 (quadrature) = 48 counts per motor revolution
+CPR_wheel = 48 × 10 = 480 counts per wheel revolution
+Circumference = π × D
+              = π × 54
+              ≈ 169.65 mm
+distOneTick = 169.65 mm / 480
+            ≈ 0.353 mm per tick
+const double EV::distOneTick = 0.353; // mm per encoder count
+
+*/
+// I'M ONLY USING ONE INTERRUPT PIN SO WE ONLY ACCOUNT FOR HALD THE TICKS PER REVOLUTION, NOT THE FULL QUADRATURE COUNT
+const double EV::distOneTick = 169.65 / 240.0; // ≈ 0.707 mm
+
 
 
 
@@ -129,12 +148,9 @@ void EV::PIDLoop(double goal) {
     linPID.derivative = 0;
     linPID.integral = 0;
 
-    double correctKp = 320; // aims to fix drift 185, 285
-    double correctKd = 2.5; // aims to fix drift 1.75, 2.5
-
-    double correctPrevError = 0;
-    double correctError = 0;
-    double correctDerivative = 0;
+    double headingKp = 4.0;   // steering proportional gain
+    double headingKd = 0.2;   // steering derivative gain
+    double headingPrevError = 0.0;
 
     double prevTime = millis();
     double totalTime = 0;
@@ -150,6 +166,9 @@ void EV::PIDLoop(double goal) {
         // Get time delta in seconds
         double currentTime = millis();
         double dt = (currentTime - prevTime) / 1000.0;
+        if (dt <= 0.0001) {
+            dt = 0.0001; // prevent divide-by-zero during fast loops
+        }
         totalTime += dt;
 
         // account for detla time in these calculations
@@ -160,34 +179,21 @@ void EV::PIDLoop(double goal) {
         // clamp integral term to prevent windup
         linPID.integral = constrain(linPID.integral, -linPID.high, linPID.high);
 
-
         int32_t power = (linPID.kP * linPID.error) + 
                         (linPID.kI * linPID.integral) + 
                         (linPID.kD * linPID.derivative);
-        
-          // Read raw z-axis gyroscope data and subtract calibration offset
-        int16_t gz = readGyroZ();
-        float gyroZ = (gz - gyroOffsetZ) / GYRO_SCALE; // in °/s
 
-        yaw += gyroZ * dt;  // yaw in degrees
+        // Heading hold using differential drive
+        double headingError = readHeadingDeg();
+        double headingDerivative = (headingError - headingPrevError) / dt;
+        double headingCorrection = (headingKp * headingError) + (headingKd * headingDerivative);
 
-        Serial.print("Yaw: ");
-        Serial.println(yaw);
+        int32_t basePower = constrain(power, 0, 255);
+        int32_t leftPower = constrain(basePower - headingCorrection, 0, 255);
+        int32_t rightPower = constrain(basePower + headingCorrection, 0, 255);
 
-        correctError = yaw;
-        correctDerivative = (correctError - correctPrevError) / dt;
-
-        double correction = (correctKp * correctError) + 
-                            (correctKd * correctDerivative);
-
-
-        double leftPower = power + correction; // -s
-        double rightPower = power - correction; // +
-
-        leftPower = constrain(leftPower, linPID.low, linPID.high);
-        rightPower = constrain(rightPower, linPID.low, linPID.high);
+        forward(static_cast<uint8_t>(leftPower), static_cast<uint8_t>(rightPower));
     
-        
         // Check for timeout (using currentTime if you want an absolute time based on millis)
         if ((totalTime) >= linPID.timeOut) {
             Serial.println("broke bc time limit met");
@@ -200,14 +206,9 @@ void EV::PIDLoop(double goal) {
             break;
         }
 
-        // Move motors; if target is negative, error will be negative and so will the power
-        if (power >= 0) forward(leftPower, rightPower);
-        else backward(abs(power));
-        
-
         // Update previous error and time for next loop
         linPID.prevError = linPID.error;
-        correctPrevError = correctError;
+        headingPrevError = headingError;
         prevTime = currentTime;
 
         delay(10);
