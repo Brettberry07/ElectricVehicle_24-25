@@ -9,8 +9,8 @@ EV ev(MOTOR_A1, MOTOR_A2, MOTOR_ENA,
       );
 
 void getSensors() {
-  ev.updateEncoder(ev.sensor.leftEncoderCount, ev.pinSA1, ev.pinSA2);
-  ev.updateEncoder(ev.sensor.rightEncoderCount, ev.pinSB1, ev.pinSB2);
+  ev.updateEncoder(ev.sensor.leftEncoderCount, ev.pinSA1, ev.pinSA2, true);
+  ev.updateEncoder(ev.sensor.rightEncoderCount, ev.pinSB1, ev.pinSB2, false);
 
 }
 
@@ -44,7 +44,7 @@ void setup() {
 // double distance = 200; // make sure this is in cm (84 in)
 
 
-double distance = 850; // make sure this is in cm
+double distance = 700; // make sure this is in cm
 
 int loopCount = 1;
 void loop() {
@@ -56,10 +56,14 @@ void loop() {
   //   }
   // }
   // ev.brake();
+  ev.PIDLoop(distance);
+  while (true) {
+    delay(1000);
+  }
 
-  double heading = readHeadingDeg();
-  Serial.print("Heading: ");
-  Serial.println(heading);
+  // double heading = readHeadingDeg();
+  // Serial.print("Heading: ");
+  // Serial.println(heading);
 }
 
 

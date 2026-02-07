@@ -54,7 +54,7 @@ public:
     
     static void getSensorsOnInterupt();  // Make static
     void tarePosition();
-    void updateEncoder(volatile int &encoderCount, int pinA, int pinB);
+    void updateEncoder(volatile int &encoderCount, int pinA, int pinB, bool inverted = false);
 
     double getLinearError(double dist, double goal);
     double getAngularError(SensorReadings pos, double goal = 0);

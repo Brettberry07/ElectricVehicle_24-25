@@ -14,17 +14,34 @@ EV* EV::instance = nullptr; // Define static instance
 /*
 gear_ratio = 10
 12 PPR × 4 (quadrature) = 48 counts per motor revolution
-CPR_wheel = 48 × 10 = 480 counts per wheel revolution
+CPR_wheel = 48 × 20 = 960 counts per wheel revolution
 Circumference = π × D
               = π × 54
               ≈ 169.65 mm
-distOneTick = 169.65 mm / 480
-            ≈ 0.353 mm per tick
-const double EV::distOneTick = 0.353; // mm per encoder count
+distOneTick = 169.65 mm / 960
+            ≈ 0.1766 mm per tick
+const double EV::distOneTick = 0.353; // mm per encoder count``
 
 */
-// I'M ONLY USING ONE INTERRUPT PIN SO WE ONLY ACCOUNT FOR HALD THE TICKS PER REVOLUTION, NOT THE FULL QUADRATURE COUNT
-const double EV::distOneTick = 169.65 / 240.0; // ≈ 0.707 mm
+// I'M ONLY USING ONE INTERRUPT PIN SO WE ONLY ACCOUNT FOR HALF THE TICKS PER REVOLUTION, NOT THE FULL QUADRATURE COUNT
+// distOneTick in centimeters for consistency with distance goals
+// const double EV::distOneTick = 0.0766;
+// const double EV::distOneTick = 0.1002;
+// const double EV::distOneTick = 0.0586;
+// const double EV::distOneTick = 0.0646;
+const double EV::distOneTick = 0.0676;
+
+
+
+/*
+Goal | Actual
+48.     39
+24.     17
+6.     2.5
+29.    22.5
+84.    64
+*/
+
 
 
 
@@ -57,22 +74,25 @@ void EV::initialize() {
 
 //Driver methods
 void EV::forward(uint8_t speed1, uint8_t speed2) {
-    analogWrite(pinENA, speed1); digitalWrite(pinA1, HIGH); digitalWrite(pinA2, LOW);
+    // Left motor wiring flipped, so invert drive signals for left side
+    analogWrite(pinENA, speed1); digitalWrite(pinA1, LOW); digitalWrite(pinA2, HIGH);
     analogWrite(pinENB, speed2); digitalWrite(pinB1, HIGH); digitalWrite(pinB2, LOW);
 }
 
 void EV::backward(uint8_t speed) {
-    analogWrite(pinENA, speed); digitalWrite(pinA1, LOW); digitalWrite(pinA2, HIGH);
+    analogWrite(pinENA, speed); digitalWrite(pinA1, HIGH); digitalWrite(pinA2, LOW);
     analogWrite(pinENB, speed); digitalWrite(pinB1, LOW); digitalWrite(pinB2, HIGH);
 }
 
 void EV::left(uint8_t speed) {
-    analogWrite(pinENA, speed); digitalWrite(pinA1, LOW); digitalWrite(pinA2, HIGH);
+    // Turn left: left wheel backward (relative to robot), right forward
+    analogWrite(pinENA, speed); digitalWrite(pinA1, HIGH); digitalWrite(pinA2, LOW);
     analogWrite(pinENB, speed); digitalWrite(pinB1, HIGH); digitalWrite(pinB2, LOW);
 }
 
 void EV::right(uint8_t speed) {
-    analogWrite(pinENA, speed); digitalWrite(pinA1, HIGH); digitalWrite(pinA2, LOW);
+    // Turn right: left wheel forward, right backward
+    analogWrite(pinENA, speed); digitalWrite(pinA1, LOW); digitalWrite(pinA2, HIGH);
     analogWrite(pinENB, speed); digitalWrite(pinB1, LOW); digitalWrite(pinB2, HIGH);
 }
 
@@ -88,16 +108,16 @@ void EV::tarePosition() {
     sensor.rightEncoderCount = 0;
 }
 
-void EV::updateEncoder(volatile int &encoderCount, int pinA, int pinB) {
-    encoderCount += (digitalRead(pinA) == digitalRead(pinB)) ? -1 : 1; // 600 rpm
-    // encoderCount += (digitalRead(pinA) == digitalRead(pinB)) ? -1 : 1; // 300 rpm
-
+void EV::updateEncoder(volatile int &encoderCount, int pinA, int pinB, bool inverted) {
+    int step = (digitalRead(pinA) == digitalRead(pinB)) ? -1 : 1;
+    if (inverted) step = -step;
+    encoderCount += step; // 600 rpm
 }
 
 void EV::getSensorsOnInterupt() {
     if (instance) {
-        instance->updateEncoder(instance->sensor.leftEncoderCount, instance->pinSA1, instance->pinSA2);
-        instance->updateEncoder(instance->sensor.rightEncoderCount, instance->pinSB1, instance->pinSB2);
+        instance->updateEncoder(instance->sensor.leftEncoderCount, instance->pinSA1, instance->pinSA2, true);
+        instance->updateEncoder(instance->sensor.rightEncoderCount, instance->pinSB1, instance->pinSB2, false);
         return;
     }
     Serial.println("No instance found");
@@ -157,7 +177,9 @@ void EV::PIDLoop(double goal) {
 
 
     while (true) {
-        double dist = getDistance(); // get's our average distance travelled
+        double dist = -getDistance(); // get's our average distance travelled
+        Serial.print("dist (cm): ");
+        Serial.println(dist);
 
         linPID.error = goal - dist;
         Serial.print("error: ");
@@ -201,7 +223,7 @@ void EV::PIDLoop(double goal) {
         } 
 
         // Check if error is within an acceptable range
-        if (abs(linPID.error) < 10.0) {
+        if (abs(linPID.error) < 5.0) {
             Serial.println("broke bc target met");
             break;
         }
