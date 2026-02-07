@@ -160,7 +160,7 @@ void EV::compLoop(double goal) {
 
 
 // PID methods
-void EV::PIDLoop(double goal) {
+void EV::PIDLoop(double goal, double travelTimeSec) {
 
     tarePosition();
 
@@ -172,12 +172,17 @@ void EV::PIDLoop(double goal) {
     double headingKd = 0.2;   // steering derivative gain
     double headingPrevError = 0.0;
 
+    const uint8_t minPWM = 70;      // motors stall below this
+    const uint8_t slowPWM = 90;     // gentle approach speed
+    const double slowDist = 30.0;   // cm where we creep in
+    const double scheduleKp = 2.0;  // adjust pace vs. time schedule
+
     double prevTime = millis();
-    double totalTime = 0;
+    double startTime = prevTime;
 
 
     while (true) {
-        double dist = -getDistance(); // get's our average distance travelled
+        double dist = -getDistance(); // average distance travelled (negated for wiring orientation)
         Serial.print("dist (cm): ");
         Serial.println(dist);
 
@@ -191,7 +196,6 @@ void EV::PIDLoop(double goal) {
         if (dt <= 0.0001) {
             dt = 0.0001; // prevent divide-by-zero during fast loops
         }
-        totalTime += dt;
 
         // account for detla time in these calculations
         linPID.derivative = (linPID.error - linPID.prevError) / dt;
@@ -202,26 +206,33 @@ void EV::PIDLoop(double goal) {
         linPID.integral = constrain(linPID.integral, -linPID.high, linPID.high);
 
         int32_t power = (linPID.kP * linPID.error) + 
-                        (linPID.kI * linPID.integral) + 
-                        (linPID.kD * linPID.derivative);
+                (linPID.kI * linPID.integral) + 
+                (linPID.kD * linPID.derivative);
+
+        // Time-based pacing: if behind schedule, push harder; if ahead, ease off
+        double elapsed = (currentTime - startTime) / 1000.0;
+        double expectedDist = goal * min(elapsed / travelTimeSec, 1.0);
+        double scheduleError = dist - expectedDist; // positive = ahead
+        double scheduleAdjust = -scheduleKp * scheduleError; // slow when ahead, speed when behind
 
         // Heading hold using differential drive
         double headingError = readHeadingDeg();
         double headingDerivative = (headingError - headingPrevError) / dt;
         double headingCorrection = (headingKp * headingError) + (headingKd * headingDerivative);
 
-        int32_t basePower = constrain(power, 0, 255);
-        int32_t leftPower = constrain(basePower - headingCorrection, 0, 255);
-        int32_t rightPower = constrain(basePower + headingCorrection, 0, 255);
+        double rawBase = fabs(power + scheduleAdjust);
+
+        // Final approach: creep in with a known-good PWM that still moves
+        if (fabs(linPID.error) <= slowDist) {
+            rawBase = slowPWM;
+        }
+
+        int32_t basePower = constrain(static_cast<int32_t>(rawBase), minPWM, 255);
+        int32_t leftPower = constrain(basePower - headingCorrection, minPWM, 255);
+        int32_t rightPower = constrain(basePower + headingCorrection, minPWM, 255);
 
         forward(static_cast<uint8_t>(leftPower), static_cast<uint8_t>(rightPower));
     
-        // Check for timeout (using currentTime if you want an absolute time based on millis)
-        if ((totalTime) >= linPID.timeOut) {
-            Serial.println("broke bc time limit met");
-            break;
-        } 
-
         // Check if error is within an acceptable range
         if (abs(linPID.error) < 5.0) {
             Serial.println("broke bc target met");

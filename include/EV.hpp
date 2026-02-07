@@ -60,6 +60,6 @@ public:
     double getAngularError(SensorReadings pos, double goal = 0);
 
     void compLoop(double goal);
-    void PIDLoop(double goal);
+    void PIDLoop(double goal, double travelTimeSec);
     void updateOdom();
 };
