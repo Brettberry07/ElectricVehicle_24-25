@@ -172,10 +172,10 @@ void EV::PIDLoop(double goal, double travelTimeSec) {
     double headingKd = 0.2;   // steering derivative gain
     double headingPrevError = 0.0;
 
-    const uint8_t minPWM = 70;      // motors stall below this
-    const uint8_t slowPWM = 90;     // gentle approach speed
-    const double slowDist = 30.0;   // cm where we creep in
-    const double scheduleKp = 2.0;  // adjust pace vs. time schedule
+    const uint8_t minPWM = 40;      // motors stall below this
+    const uint8_t slowPWM = 50;     // gentle approach speed
+    const double slowDist = 20.0;   // cm where we creep in
+    const double scheduleKp = 4.0;  // adjust pace vs. time schedule
 
     double prevTime = millis();
     double startTime = prevTime;
@@ -222,9 +222,9 @@ void EV::PIDLoop(double goal, double travelTimeSec) {
 
         double rawBase = fabs(power + scheduleAdjust);
 
-        // Final approach: creep in with a known-good PWM that still moves
+        // Final approach: creep in; allow schedule adjust to slow us further if ahead
         if (fabs(linPID.error) <= slowDist) {
-            rawBase = slowPWM;
+            rawBase = min(rawBase, static_cast<double>(slowPWM));
         }
 
         int32_t basePower = constrain(static_cast<int32_t>(rawBase), minPWM, 255);
